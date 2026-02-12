@@ -50,7 +50,7 @@ func ClonarFormato(id string, body []byte) (interface{}, error) {
 		plan["formato"] = false
 		plan["vigencia"] = parametros["vigencia"].(string)
 		plan["dependencia_id"] = parametros["dependencia_id"].(string)
-		plan["estado_plan_id"] = "614d3ad301c7a200482fabfd"
+		plan["estado_plan_id"] = "614d3ad301c7a200482fabfd" // En formulación
 		plan["formato_id"] = id
 		plan["nueva_estructura"] = true
 
@@ -1023,9 +1023,26 @@ func VersionarPlan(id string) (interface{}, error) {
 func GetPlanVersiones(unidad string, vigencia string, nombre string) (interface{}, error) {
 	var respuesta map[string]interface{}
 	var versiones []map[string]interface{}
+
 	if err := request.GetJson("http://"+beego.AppConfig.String("PlanesService")+"/plan?query=dependencia_id:"+unidad+",vigencia:"+vigencia+",formato:false,nombre:"+nombre, &respuesta); err == nil {
 		request.LimpiezaRespuestaRefactor(respuesta, &versiones)
 		versionesOrdenadas := formulacionhelper.OrdenarVersiones(versiones)
+		for _, version := range versionesOrdenadas {
+			padre_plan_id, ok := version["padre_plan_id"]
+			if ok {
+				if err := request.GetJson("http://"+beego.AppConfig.String("PlanesService")+"/reformulacion?query=plan_id:"+padre_plan_id.(string), &respuesta); err == nil {
+					if len(respuesta["Data"].([]interface{})) > 0 {
+						version["reformulacion"] = true
+					} else {
+						version["reformulacion"] = false
+					}
+				} else {
+					return nil, errors.New("error del servicio GetPlanVersiones: No se pudo hacer la solicitud a planes_crud" + err.Error())
+				}
+			} else {
+				version["reformulacion"] = false
+			}
+		}
 		return versionesOrdenadas, nil
 	} else {
 		return nil, errors.New("error del servicio GetPlanVersiones: La solicitud contiene un tipo de dato incorrecto o un parámetro inválido" + err.Error())
@@ -1420,11 +1437,9 @@ func GetPlanesUnidadesComun(id string, datos []byte) (interface{}, error) {
 
 		// Verificar el resultado
 		if len(unidadesValidadas) > 0 {
-			// fmt.Println("Unidades de intersección:", unidadesValidadas)
 			planesInteres := periodo_seguimiento["planes_interes"]
 			return planesInteres, nil
 		} else {
-			// fmt.Println("No hay unidades en la intersección")
 			// c.Data["json"] = map[string]interface{}{"Success": true, "Status": "404", "Message": "Successful", "Data": "Not found"}
 			return "No hay unidades en la intersección", nil
 		}
